@@ -16,6 +16,7 @@ VideoAgents 官方插件仓库。VideoAgents 内置 83 个 Agent 覆盖「小说
 | **fusion-fiction** 双书融合 | 把两本书融合成一部新剧本：甲本出故事与人物灵魂，乙本覆盖世界观与人物形象壳 | [fusion-fiction.zip](plugins/fusion-fiction.zip) |
 | **audio-to-video** 音频配画 | 给一段讲述音频（MP3 + 文本）配上精确贴合的视频画面，声轨就是用户原始母带 | [audio-to-video.zip](plugins/audio-to-video.zip) |
 | **mashup** 混剪配画 | 给讲述音频配**现成素材**画面：不生成一帧视频，检索 YouTube/CC0 素材站下载切片混剪，零公差零漂移 | [mashup.zip](plugins/mashup.zip) |
+| **audio-drama** 有声剧/播客 | 把既有世界观、分集剧本与声音资产做成可发布的有声剧/播客：剧本有声化 → 声音导演 → 配音/音效/音乐 → 混音母带 → 发布包装，**最终产品是音频母带** | [audio-drama.zip](plugins/audio-drama.zip) |
 
 ### 功能说明
 
@@ -51,6 +52,15 @@ audio-to-video 的近亲，但**不生成一帧视频**：用户同样提供 MP3
 - **成本阶梯**：元数据检索（零流量）→ 360p 预览抽帧（几 MB）→ 确认后才 1080p 区间下载（几十 MB）；同源视频整簇复用。**水印一票否决**（摸底约 1/3 候选因此被毙）。
 - **版权口径**：不过滤 license，责任由用户 **MH1 签字自担**；流程强制登记来源台账 `sources.json`，unknown license 清单在 MH3 终签时呈给用户。
 - **前置要求**：宿主自带 `modules/footage.py` + `code/check_footage.py`（v2 拍/镜口径）；本机 `yt-dlp`（2025.11+ 另需 node）与 `ffmpeg/ffprobe` 可用；选片工位须派给带视觉能力的引擎。装完先跑 `python3 modules/footage.py doctor`。同样**以第一个节点 `mx0-ingest` 的自检结论为准**。
+
+#### audio-drama — 有声剧 / 播客制作
+
+把项目既有的世界观、分集剧本（screenplay/dialogue/narration）和声音资产转成可发布的有声剧或播客。它不是 audio-to-video 的反向复制：**最终产品是音频母带，视频不是必需品**。
+
+- **流程**：ad0 有声化改编（把视觉信息翻成耳朵能听懂的戏——旁白/对白/音效/音乐/停连，产出有声化脚本 + cue sheet）→ ad1 声音导演（按 `voice.json`/`casting.json` 绑定角色声线，逐句情绪、语速、停顿与表演指导）→ ad2 五路声音素材并行（配音/旁白/BGM/音效/环境声）→ ad3 混音母带（响度 -14 LUFS ±1、真峰 ≤ -1 dBTP、零削波）+ 音频 QA → ad4 内容安全/版权 + 播客发布包装。三个人工签字点：**ADH1** 有声化脚本、**ADH2** 母带与片头片尾、**ADH3** 发布签字。
+- **团队**：新增 3 个 Agent（有声化编剧、声音导演、播客包装）；配音、旁白、BGM、音效、环境声、混音、音频 QA、内容安全、版权全部复用内置工位。
+- **命名空间**：只写 `data/projects/<slug>/audio-drama/`（scripts / casting / voices / mix / publish），不改正史 `bible/`；人工确认后才允许把最终文件复制到项目既有的 `publish/audio/`。
+- **边界与增量**：纯声明式插件，不携带新的 Python/FFmpeg 可执行代码；片头片尾作为版本化音频资产管理，不在每次混音时临时生成。项目里已有有声化材料（dialogue/narration/casting 甚至成品单集）时，可从 ad0 的「读取已有有声化材料」增量模式起步，不必重拆整部剧本。
 
 ### 如何安装
 
@@ -116,6 +126,14 @@ curl -X POST --data-binary @audio-to-video.zip http://127.0.0.1:8630/api/v1/plug
 再逐拍分镜设计，出时间轴与节奏基线给我签 MH1。
 ```
 
+**audio-drama 有声剧/播客：**
+
+```text
+启动 audio-drama 有声剧流程：把第 1 集剧本做成播客单集。
+角色声音沿用 casting.json 里既有的绑定。
+先跑 ad0 有声化改编，出有声化脚本和 cue sheet 给我签 ADH1。
+```
+
 ---
 
 ## English
@@ -130,6 +148,7 @@ The official plugin repository for VideoAgents. VideoAgents ships with 83 built-
 | **fusion-fiction** | Fuse two books into one new screenplay: Book A supplies the story and character souls, Book B supplies the worldview and character appearance shells | [fusion-fiction.zip](plugins/fusion-fiction.zip) |
 | **audio-to-video** | Generate a video whose visuals precisely follow a narrated audio track (MP3 + transcript) — the soundtrack is the user's original master, untouched | [audio-to-video.zip](plugins/audio-to-video.zip) |
 | **mashup** | Pair a narrated audio track with **found footage**: no video generation at all — search YouTube/CC0 stock sites, download and cut existing clips, zero tolerance and zero drift | [mashup.zip](plugins/mashup.zip) |
+| **audio-drama** | Turn the project's existing worldview, episode scripts, and voice assets into a publishable audio drama / podcast: script adaptation → voice direction → voices/SFX/music → mixed master → release packaging. **The final product is an audio master** | [audio-drama.zip](plugins/audio-drama.zip) |
 
 ### What Each Plugin Does
 
@@ -165,6 +184,15 @@ A close cousin of audio-to-video, except **not a single frame is generated**: yo
 - **Cost ladder**: metadata search (zero traffic) → 360p previews with frame grids (a few MB) → 1080p range downloads only after confirmation (tens of MB); one source video serves a whole cluster. **Watermarks are an instant veto** (~1/3 of candidates were killed for this in field testing).
 - **Copyright stance**: licenses are not filtered — responsibility rests with the user via the **MH1 sign-off**; the pipeline enforces honest bookkeeping in a `sources.json` ledger, and the unknown-license list is presented at the final MH3 sign-off.
 - **Prerequisites**: a host that ships `modules/footage.py` + `code/check_footage.py` (v2 beat/shot semantics); `yt-dlp` (2025.11+ also needs node) and `ffmpeg/ffprobe` available locally; the curator must run on a vision-capable engine. Run `python3 modules/footage.py doctor` after installing. As with audio-to-video, **trust the verdict of the first node, `mx0-ingest`**.
+
+#### audio-drama — Audio Drama / Podcast Production
+
+Turns the project's existing worldview, episode scripts (screenplay/dialogue/narration), and voice assets into a publishable audio drama or podcast. It is not audio-to-video in reverse: **the final product is an audio master — video is optional**.
+
+- **Flow**: ad0 audio adaptation (translate visual information into something the ear can follow — narration, dialogue, SFX, music, pauses; outputs an audio script + cue sheet) → ad1 voice direction (bind character voices via `voice.json`/`casting.json`, with per-line emotion, pacing, pauses, and performance notes) → ad2 five parallel sound-asset tracks (voices / narration / BGM / SFX / ambience) → ad3 mixing and mastering (-14 LUFS ±1, true peak ≤ -1 dBTP, zero clipping) + audio QA → ad4 content safety / copyright + podcast release packaging. Three human sign-offs: **ADH1** audio script, **ADH2** master plus intro/outro, **ADH3** release.
+- **Team**: 3 new agents (audio adapter, voice director, podcast packager); voices, narration, BGM, SFX, ambience, mixing, audio QA, content safety, and copyright all reuse built-in agents.
+- **Namespace**: writes only to `data/projects/<slug>/audio-drama/` (scripts / casting / voices / mix / publish) and never touches the canonical `bible/`; final files may be copied into the project's existing `publish/audio/` only after human confirmation.
+- **Boundaries & incrementality**: a purely declarative plugin — no new Python/FFmpeg executable code; intro/outro clips are managed as versioned audio assets, not regenerated on every mix. Projects that already have audio-ready material (dialogue/narration/casting, even a finished pilot episode) can start from ad0's "read existing material" incremental mode instead of re-adapting the whole script.
 
 ### Installation
 
@@ -233,4 +261,13 @@ Start the mashup workflow: audio refs/audio/qingxing.mp3, transcript
 refs/qingxing.txt. Run p0–p2 first for the worldview reference, with mx0 ingest
 and alignment in parallel, then design the storyboard beat by beat and give me
 the timeline and rhythm baseline for the MH1 sign-off.
+```
+
+**audio-drama:**
+
+```text
+Start the audio-drama workflow: turn episode 1's script into a podcast episode.
+Keep the existing character-voice bindings from casting.json.
+Run ad0 audio adaptation first, and give me the audio script and cue sheet
+for the ADH1 sign-off.
 ```
