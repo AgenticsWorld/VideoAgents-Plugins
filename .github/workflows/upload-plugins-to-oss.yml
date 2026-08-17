@@ -14,13 +14,14 @@ concurrency:
 
 env:
   OSSUTIL_VERSION: 2.1.2
-  # Configurable via repository variables (Settings > Variables), so forks can
-  # target their own bucket. Not secrets: masking them would make logs unreadable.
-  OSS_BUCKET: ${{ vars.OSS_BUCKET || 'shumati-pro' }}
-  OSS_PREFIX: ${{ vars.OSS_PREFIX || 'videoagents' }}
+  # All OSS coordinates come from repository variables
+  # (Settings > Secrets and variables > Actions > Variables).
+  # Deliberately no defaults: nothing about the target bucket lives in this repo.
+  OSS_BUCKET: ${{ vars.OSS_BUCKET }}
+  OSS_PREFIX: ${{ vars.OSS_PREFIX }}
   # ossutil v2 reads these directly; sign version v4 requires the region.
-  OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT || 'oss-cn-shanghai.aliyuncs.com' }}
-  OSS_REGION: ${{ vars.OSS_REGION || 'cn-shanghai' }}
+  OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
+  OSS_REGION: ${{ vars.OSS_REGION }}
 
 jobs:
   upload:
@@ -28,6 +29,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Check configuration
+        run: |
+          set -euo pipefail
+          missing=()
+          for v in OSS_BUCKET OSS_PREFIX OSS_ENDPOINT OSS_REGION; do
+            [ -n "${!v:-}" ] || missing+=("$v (variable)")
+          done
+          [ -n "${AK_ID}" ] || missing+=("OSS_ACCESS_KEY_ID (secret)")
+          [ -n "${AK_SECRET}" ] || missing+=("OSS_ACCESS_KEY_SECRET (secret)")
+          if [ ${#missing[@]} -gt 0 ]; then
+            printf '::error::Not configured: %s\n' "$(IFS=', '; echo "${missing[*]}")"
+            exit 1
+          fi
+        env:
+          AK_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          AK_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
 
       - name: Install ossutil
         run: |
@@ -46,11 +64,6 @@ jobs:
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
         run: |
           set -euo pipefail
-          if [ -z "${OSS_ACCESS_KEY_ID}" ] || [ -z "${OSS_ACCESS_KEY_SECRET}" ]; then
-            echo "::error::Missing repository secrets OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET"
-            exit 1
-          fi
-
           shopt -s nullglob
           files=(plugins/*.zip)
           if [ ${#files[@]} -eq 0 ]; then
@@ -58,15 +71,9 @@ jobs:
             exit 1
           fi
 
-          printf 'Target: oss://%s/%s/ (%s)\n' "${OSS_BUCKET}" "${OSS_PREFIX}" "${OSS_ENDPOINT}"
-          printf 'Uploading %s file(s):\n' "${#files[@]}"
-          printf '  %s\n' "${files[@]}"
+          dest="oss://${OSS_BUCKET}/${OSS_PREFIX%/}/"
+          printf 'Uploading %s file(s) to %s\n' "${#files[@]}" "${dest}"
           for f in "${files[@]}"; do
-            ossutil cp "$f" "oss://${OSS_BUCKET}/${OSS_PREFIX}/$(basename "$f")" --force
+            printf '  %s\n' "$f"
+            ossutil cp "$f" "${dest}$(basename "$f")" --force
           done
-
-      - name: List remote directory
-        env:
-          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-        run: ossutil ls "oss://${OSS_BUCKET}/${OSS_PREFIX}/"
