@@ -29,6 +29,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # Full history so the push range can be diffed.
+          fetch-depth: 0
 
       - name: Check configuration
         run: |
@@ -47,7 +50,52 @@ jobs:
           AK_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
           AK_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
 
+      - name: Select changed zip files
+        id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          list="${RUNNER_TEMP}/upload-list.txt"
+
+          # Incremental only for a push whose base commit is still reachable.
+          # Manual runs and force-push/initial-push fall back to uploading everything.
+          incremental=false
+          if [ "${EVENT_NAME}" = "push" ] \
+            && [ -n "${BEFORE_SHA}" ] \
+            && ! printf '%s' "${BEFORE_SHA}" | grep -qE '^0+$' \
+            && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            incremental=true
+          fi
+
+          if [ "${incremental}" = true ]; then
+            echo "Mode: incremental (${BEFORE_SHA}..${AFTER_SHA})"
+            # :(glob) keeps * from crossing '/', matching the full-mode find below.
+            git diff --name-only --diff-filter=ACMR \
+              "${BEFORE_SHA}" "${AFTER_SHA}" -- ':(glob)plugins/*.zip' > "${list}"
+          else
+            echo "Mode: full (all zip files under plugins/)"
+            find plugins -maxdepth 1 -type f -name '*.zip' | sort > "${list}"
+            if [ ! -s "${list}" ]; then
+              echo "::error::No .zip files found under plugins/"
+              exit 1
+            fi
+          fi
+
+          count=$(wc -l < "${list}" | tr -d ' ')
+          echo "count=${count}" >> "${GITHUB_OUTPUT}"
+          echo "list=${list}" >> "${GITHUB_OUTPUT}"
+          if [ "${count}" -eq 0 ]; then
+            echo "No zip changes in this push - nothing to upload."
+          else
+            printf 'Selected %s file(s):\n' "${count}"
+            sed 's/^/  /' "${list}"
+          fi
+
       - name: Install ossutil
+        if: steps.select.outputs.count != '0'
         run: |
           set -euo pipefail
           pkg="ossutil-${OSSUTIL_VERSION}-linux-amd64"
@@ -59,21 +107,17 @@ jobs:
           ossutil version
 
       - name: Upload zip files
+        if: steps.select.outputs.count != '0'
         env:
           OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          UPLOAD_LIST: ${{ steps.select.outputs.list }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          files=(plugins/*.zip)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "::error::No .zip files found under plugins/"
-            exit 1
-          fi
-
           dest="oss://${OSS_BUCKET}/${OSS_PREFIX%/}/"
-          printf 'Uploading %s file(s) to %s\n' "${#files[@]}" "${dest}"
-          for f in "${files[@]}"; do
+          printf 'Uploading to %s\n' "${dest}"
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
             printf '  %s\n' "$f"
             ossutil cp "$f" "${dest}$(basename "$f")" --force
-          done
+          done < "${UPLOAD_LIST}"
