@@ -1,0 +1,78 @@
+name: Upload plugins to Aliyun OSS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'plugins/**/*.zip'
+  workflow_dispatch:
+
+concurrency:
+  group: upload-plugins-oss
+  cancel-in-progress: true
+
+env:
+  OSS_ENDPOINT: oss-cn-shanghai.aliyuncs.com
+  OSS_BUCKET: shumati-pro
+  OSS_PREFIX: videoagents
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ossutil
+        run: |
+          set -euo pipefail
+          curl -fsSL -o ossutil64 https://gosspublic.alicdn.com/ossutil/1.7.19/ossutil64
+          chmod +x ossutil64
+          sudo mv ossutil64 /usr/local/bin/ossutil64
+          ossutil64 --version
+
+      - name: Configure ossutil
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OSS_ACCESS_KEY_ID}" ] || [ -z "${OSS_ACCESS_KEY_SECRET}" ]; then
+            echo "::error::Missing repository secrets OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET"
+            exit 1
+          fi
+          ossutil64 config \
+            -e "${OSS_ENDPOINT}" \
+            -i "${OSS_ACCESS_KEY_ID}" \
+            -k "${OSS_ACCESS_KEY_SECRET}" \
+            -L CH \
+            --config-file "${HOME}/.ossutilconfig"
+          chmod 600 "${HOME}/.ossutilconfig"
+
+      - name: Upload zip files
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(plugins/*.zip)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::No .zip files found under plugins/"
+            exit 1
+          fi
+          printf 'Uploading %s file(s):\n' "${#files[@]}"
+          printf '  %s\n' "${files[@]}"
+          for f in "${files[@]}"; do
+            ossutil64 cp "$f" \
+              "oss://${OSS_BUCKET}/${OSS_PREFIX}/$(basename "$f")" \
+              --force \
+              --config-file "${HOME}/.ossutilconfig"
+          done
+
+      - name: List remote directory
+        run: |
+          ossutil64 ls "oss://${OSS_BUCKET}/${OSS_PREFIX}/" \
+            --config-file "${HOME}/.ossutilconfig"
+
+      - name: Cleanup credentials
+        if: always()
+        run: rm -f "${HOME}/.ossutilconfig"
