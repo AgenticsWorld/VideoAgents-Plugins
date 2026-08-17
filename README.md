@@ -40,7 +40,8 @@ VideoAgents 官方插件仓库。VideoAgents 内置 83 个 Agent 覆盖「小说
 
 用户提供 MP3（如一个人讲历史故事）与对应文本，流程产出一条画面精确贴合音频的成片，**声轨就是用户原来那个 MP3，零重编码**。与主流程方向正好相反：主流程画面先定、旁白适配；本插件音频母带不可动，画面按 ffprobe 实测时长切分适配。
 
-- **前置要求**：VideoAgents 版本需自带 `modules/avsync.py` 与 `code/check_av_sync.py`；本机 `ffmpeg / ffprobe` 可用；至少一个已登录的 agent 引擎；图像/视频生成渠道的 API Key。
+- **花字(可选,v1.1 接线、v1.2 升级为 HTML 渲染引擎)**:在项目「📤 输出设置」打开花字开关(`caption_enabled`,默认关)后,caption Agent 会在关键叙事节点自动设计花字+配套音效,超分后的终版组 clip 上烧录副本,并额外封装花字版成片 `final_caption.mp4`(a:0=母带+音效预混、a:1=母带零重编码存档;干净版照常产出,双版本并列)。v1.2 起花字由 **HTML+CSS 引擎**渲染(headless Chromium 逐帧透明截图 → alpha 贴片合成):动画按内容逐条创作、样式模版跟项目走(`edit/caption_templates/`),动效达到剪映文字模版级质感;字形覆盖、渲染确定性均有机检把关(`caption_glyph_coverage` 等)。
+- **前置要求**：VideoAgents 版本需自带 `modules/avsync.py` 与 `code/check_av_sync.py`；本机 `ffmpeg / ffprobe` 可用；至少一个已登录的 agent 引擎；图像/视频生成渠道的 API Key。**花字开启时**另需宿主自带 `modules/captions_html.py`(HTML 花字引擎),并安装 `pip install playwright && python3 -m playwright install chromium`(约 300MB,一次性;`python3 code/render_captions.py doctor` 自检);花字关闭则无需。
 - **注意**：旧版宿主上安装不会报错，真正的拦截点在流程第一个节点 `av0-ingest` 的自检——**装上没报错 ≠ 能用，以第一个节点的结论为准**。
 
 #### mashup — 混剪配画
@@ -172,7 +173,8 @@ Fuses two books into one new screenplay: **Book A** supplies the story and chara
 
 You provide an MP3 (e.g. someone narrating a history story) and its transcript; the pipeline produces a finished video whose visuals precisely match the audio — **the soundtrack is your original MP3, zero re-encoding**. It is the exact inverse of the main pipeline: there, visuals are fixed and narration adapts; here, the audio master is immutable and visuals are cut to the ffprobe-measured timeline.
 
-- **Prerequisites**: a VideoAgents version that ships `modules/avsync.py` and `code/check_av_sync.py`; `ffmpeg / ffprobe` available locally; at least one logged-in agent engine; API keys for your image/video generation channels.
+- **Animated captions (optional; wired in v1.1, upgraded to an HTML rendering engine in v1.2)**: turn on the caption switch (`caption_enabled`, off by default) in the project's Output Settings and the caption agent will design on-screen captions plus matching sound effects at key narrative beats, burn them onto the upscaled final group clips, and package an additional captioned master `final_caption.mp4` (a:0 = master + SFX premix, a:1 = zero-re-encoding master archive; the clean master is still produced — both versions coexist). Since v1.2, captions are rendered by an **HTML+CSS engine** (headless Chromium frame-by-frame transparent screenshots → alpha sticker compositing): animation is authored per caption from its content, style templates live with the project (`edit/caption_templates/`), and motion quality matches CapCut-style text templates; glyph coverage and render determinism are machine-checked (`caption_glyph_coverage` and friends).
+- **Prerequisites**: a VideoAgents version that ships `modules/avsync.py` and `code/check_av_sync.py`; `ffmpeg / ffprobe` available locally; at least one logged-in agent engine; API keys for your image/video generation channels. **With captions enabled**, the host must also ship `modules/captions_html.py` (the HTML caption engine) and have `pip install playwright && python3 -m playwright install chromium` (~300MB, one-time; verify with `python3 code/render_captions.py doctor`); not needed if captions stay off.
 - **Note**: installing on an older host will NOT raise an error. The real gate is the self-check in the flow's first node, `av0-ingest` — **"installed without errors" ≠ "usable"; trust the first node's verdict**.
 
 #### mashup — Found-Footage Mashup
