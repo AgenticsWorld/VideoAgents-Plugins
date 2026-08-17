@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - 'plugins/**/*.zip'
+      - 'README.md'
+      - 'scripts/build_readme_json.py'
+      - '.github/workflows/upload-plugins-to-oss.yml'
   workflow_dispatch:
 
 concurrency:
@@ -22,6 +25,8 @@ env:
   # ossutil v2 reads these directly; sign version v4 requires the region.
   OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
   OSS_REGION: ${{ vars.OSS_REGION }}
+  # Public URL prefix the zip files are served from, baked into readme.json.
+  PLUGIN_DOWNLOAD_BASE: ${{ vars.PLUGIN_DOWNLOAD_BASE }}
 
 jobs:
   upload:
@@ -37,7 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for v in OSS_BUCKET OSS_PREFIX OSS_ENDPOINT OSS_REGION; do
+          for v in OSS_BUCKET OSS_PREFIX OSS_ENDPOINT OSS_REGION PLUGIN_DOWNLOAD_BASE; do
             [ -n "${!v:-}" ] || missing+=("$v (variable)")
           done
           [ -n "${AK_ID}" ] || missing+=("OSS_ACCESS_KEY_ID (secret)")
@@ -95,7 +100,6 @@ jobs:
           fi
 
       - name: Install ossutil
-        if: steps.select.outputs.count != '0'
         run: |
           set -euo pipefail
           pkg="ossutil-${OSSUTIL_VERSION}-linux-amd64"
@@ -105,6 +109,17 @@ jobs:
           sudo install -m 0755 "${pkg}/ossutil" /usr/local/bin/ossutil
           rm -rf ossutil.zip "${pkg}"
           ossutil version
+
+      - name: Build readme.json
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 scripts/build_readme_json.py \
+            --readme README.md \
+            --plugins-dir plugins \
+            --download-base "${PLUGIN_DOWNLOAD_BASE}" \
+            --out "${RUNNER_TEMP}/readme.json"
 
       - name: Upload zip files
         if: steps.select.outputs.count != '0'
@@ -121,3 +136,16 @@ jobs:
             printf '  %s\n' "$f"
             ossutil cp "$f" "${dest}$(basename "$f")" --force
           done < "${UPLOAD_LIST}"
+
+      - name: Upload readme.json
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+        run: |
+          set -euo pipefail
+          dest="oss://${OSS_BUCKET}/${OSS_PREFIX%/}/readme.json"
+          # Short cache: the page must pick up catalog edits without a CDN purge.
+          ossutil cp "${RUNNER_TEMP}/readme.json" "${dest}" --force \
+            --content-type 'application/json; charset=utf-8' \
+            --cache-control 'public, max-age=60'
+          printf 'Published %s\n' "${dest}"
