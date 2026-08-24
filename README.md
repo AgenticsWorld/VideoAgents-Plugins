@@ -17,6 +17,7 @@ VideoAgents 官方插件仓库。VideoAgents 内置 83 个 Agent 覆盖「小说
 | **audio-to-video** 音频配画 | 给一段讲述音频（MP3 + 文本）配上精确贴合的视频画面，声轨就是用户原始母带 | [audio-to-video.zip](plugins/audio-to-video.zip) |
 | **mashup** 混剪配画 | 给讲述音频配**现成素材**画面：不生成一帧视频，检索 YouTube/CC0 素材站下载切片混剪，零公差零漂移 | [mashup.zip](plugins/mashup.zip) |
 | **audio-drama** 有声剧/播客 | 把既有世界观、分集剧本与声音资产做成可发布的有声剧/播客：剧本有声化 → 声音导演 → 配音/音效/音乐 → 混音母带 → 发布包装，**最终产品是音频母带** | [audio-drama.zip](plugins/audio-drama.zip) |
+| **digital-human** 数字人对话 | 输入音频母带、可选文稿与人物图片，生成画面按说话人切换、每镜只显示当前说话人的数字人对话成片；声轨就是用户原始母带，渠道回传音轨一律丢弃 | [digital-human.zip](plugins/digital-human.zip) |
 
 ### 功能说明
 
@@ -62,6 +63,16 @@ audio-to-video 的近亲，但**不生成一帧视频**：用户同样提供 MP3
 - **团队**：新增 3 个 Agent（有声化编剧、声音导演、播客包装）；配音、旁白、BGM、音效、环境声、混音、音频 QA、内容安全、版权全部复用内置工位。
 - **命名空间**：只写 `data/projects/<slug>/audio-drama/`（scripts / casting / voices / mix / publish），不改正史 `bible/`；人工确认后才允许把最终文件复制到项目既有的 `publish/audio/`。
 - **边界与增量**：纯声明式插件，不携带新的 Python/FFmpeg 可执行代码；片头片尾作为版本化音频资产管理，不在每次混音时临时生成。项目里已有有声化材料（dialogue/narration/casting 甚至成品单集）时，可从 ad0 的「读取已有有声化材料」增量模式起步，不必重拆整部剧本。
+
+#### digital-human — 数字人对话
+
+输入一条音频母带（如播客/对谈录音）、可选文稿及一张或多张人物图片，产出画面按最终有效文稿边界切换、每镜只显示当前说话人的数字人对话成片。**声轨始终是用户原始母带**：数字人渠道返回的音轨全部丢弃，封装 `-c:a copy` 零重编码、禁止 `-shortest`，并由逐音频帧 MD5 机检确认无重编码、无静默截断。
+
+- **文稿可选**：不提供文稿时，总制片自动派宿主 `09-audio/audio-transcription` 做本地 ASR（faster-whisper，模型缓存到宿主 `data/models/`）生成带时间轴文字稿；单人录音全自动归入唯一人物，多人录音优先用用户明确的说话人边界，否则在词时间轴上做轻量 MFCC/音高/能量聚类，按「第一/第二个声纹首次出现顺序」或「低音/高音」的自然语言说明映射到人物图——**严禁逐行交替分配、严禁从图片推断性别**，聚类置信度不足会在付费生成前阻塞。用户自带的带时间戳文稿直接使用、绝不被 ASR 覆盖；人物映射也用自然语言描述即可，无需手写 `cast.json`。
+- **四渠道**：HeyGen、Kling AI（中国北京）、RunningHub 云端工作流、本地 ComfyUI InfiniteTalk，读取宿主「生成模型设置 → 数字人」当前选中项。每个说话片段是独立 `dh2-avatar` 工单，渠道 task_id 持久化到片段台账，中断续跑恢复轮询、不重复付费提交；RunningHub 在宿主内按 1 个工单串行放行，平台并发/资源背压时进入 `waiting_capacity` 退避等待（最长 2 小时），不把其余片段批量判失败。
+- **团队**：5 个新 Agent（对话摄入、说话人对齐、数字人导演、片段生成、对话剪辑）+ 1 个数字人同步 QA；音频转写复用宿主内置工位。流程 dh0 摄入/转写/对齐 → dh1 导演 → dh2 逐段生成与核验 → dh3 合成与终审，**不设人工闸门**，机检失败即返工。
+- **首版边界**：无稿自动归名建议最多两人（重叠说话、重背景音乐、低置信度会阻塞）；每镜只显示一个人，不做双人同框、反应镜头或自动运镜；不加 BGM、降噪、归一化、片头片尾——任何会改动或移动母带的处理都不做。
+- **前置要求**：宿主须自带 `modules/digitalhuman.py`、`modules/dialogue_video.py`、`modules/transcription.py`（含 faster-whisper）与 `code/check_digitalhuman.py`，本机 `ffmpeg / ffprobe` 可用；数字人渠道需先在「生成模型设置 → 数字人」配好并通过测试（RunningHub 另需选 `.cn/.ai` 站点并登记已跑通的工作流）。旧版宿主安装不报错，**以第一个节点 `dh0-ingest` 的自检结论为准**。
 
 ### 如何安装
 
@@ -135,6 +146,15 @@ curl -X POST --data-binary @audio-to-video.zip http://127.0.0.1:8630/api/v1/plug
 先跑 ad0 有声化改编，出有声化脚本和 cue sheet 给我签 ADH1。
 ```
 
+**digital-human 数字人对话：**
+
+```text
+启动 digital-human 数字人对话流程：母带 refs/audio/podcast.mp3。
+第一个出现的不同说话人是主持人，使用 refs/avatars/host.png；
+第二个出现的不同说话人是嘉宾，使用 refs/avatars/guest.png。
+每次屏幕只显示当前说话人，使用生成模型设置中已选的数字人渠道，最终保留原始母带。
+```
+
 ---
 
 ## English
@@ -150,6 +170,7 @@ The official plugin repository for VideoAgents. VideoAgents ships with 83 built-
 | **audio-to-video** | Generate a video whose visuals precisely follow a narrated audio track (MP3 + transcript) — the soundtrack is the user's original master, untouched | [audio-to-video.zip](plugins/audio-to-video.zip) |
 | **mashup** | Pair a narrated audio track with **found footage**: no video generation at all — search YouTube/CC0 stock sites, download and cut existing clips, zero tolerance and zero drift | [mashup.zip](plugins/mashup.zip) |
 | **audio-drama** | Turn the project's existing worldview, episode scripts, and voice assets into a publishable audio drama / podcast: script adaptation → voice direction → voices/SFX/music → mixed master → release packaging. **The final product is an audio master** | [audio-drama.zip](plugins/audio-drama.zip) |
+| **digital-human** | Turn an audio master, an optional transcript, and one or more character images into a talking-avatar dialogue video — the picture cuts follow the speakers, only the active speaker is ever on screen, and the soundtrack is the user's original master (provider audio is discarded) | [digital-human.zip](plugins/digital-human.zip) |
 
 ### What Each Plugin Does
 
@@ -195,6 +216,16 @@ Turns the project's existing worldview, episode scripts (screenplay/dialogue/nar
 - **Team**: 3 new agents (audio adapter, voice director, podcast packager); voices, narration, BGM, SFX, ambience, mixing, audio QA, content safety, and copyright all reuse built-in agents.
 - **Namespace**: writes only to `data/projects/<slug>/audio-drama/` (scripts / casting / voices / mix / publish) and never touches the canonical `bible/`; final files may be copied into the project's existing `publish/audio/` only after human confirmation.
 - **Boundaries & incrementality**: a purely declarative plugin — no new Python/FFmpeg executable code; intro/outro clips are managed as versioned audio assets, not regenerated on every mix. Projects that already have audio-ready material (dialogue/narration/casting, even a finished pilot episode) can start from ad0's "read existing material" incremental mode instead of re-adapting the whole script.
+
+#### digital-human — Talking-Avatar Dialogue
+
+You provide an audio master (e.g. a podcast or interview recording), an optional transcript, and one or more character images; the pipeline produces a dialogue video whose picture cuts follow the effective transcript's speaker boundaries, with only the active speaker on screen per shot. **The soundtrack is always your original master**: the audio returned by the avatar providers is discarded, the final mux uses `-c:a copy` with `-shortest` forbidden, and a per-audio-frame MD5 machine check confirms zero re-encoding and no silent truncation.
+
+- **Transcript optional**: with no transcript, the orchestrator automatically dispatches the host's built-in `09-audio/audio-transcription` agent for local ASR (faster-whisper, models cached under the host's `data/models/`) to generate a timestamped transcript. Single-speaker recordings are auto-assigned to the sole character; multi-speaker recordings use the user's explicit speaker boundaries when given, otherwise lightweight MFCC/pitch/energy clustering on the word timeline, mapped to character images via plain-language hints like "first/second distinct speaker to appear" or "low/high voice" — **never round-robin line assignment, never gender inference from images**, and low clustering confidence blocks paid generation. A user-supplied timestamped transcript is used as-is and never overwritten by ASR; character mapping is also plain language — no hand-written `cast.json` needed.
+- **Four providers**: HeyGen, Kling AI (Beijing), RunningHub cloud workflows, or local ComfyUI InfiniteTalk — whichever is selected in the host's Generation Model Settings → Digital Human. Each utterance is an independent `dh2-avatar` work order with its provider task_id persisted to a job ledger, so interrupted runs resume polling instead of re-submitting paid tasks; RunningHub clips are released serially (one in-flight order per host), and platform concurrency/capacity backpressure puts the current clip into `waiting_capacity` with backoff (up to 2 hours) instead of failing the rest of the batch.
+- **Team**: 5 new agents (dialogue ingest, speaker aligner, avatar director, avatar generator, dialogue editor) plus one digital-human sync QA; transcription reuses the built-in agent. Flow: dh0 ingest/transcribe/align → dh1 direction → dh2 per-utterance generation and verification → dh3 composition and final QA — **no human gates**; failed machine checks trigger rework.
+- **V1 boundaries**: auto-diarization is recommended for at most two speakers (overlapping speech, heavy background music, or low confidence blocks generation); one person per shot — no two-shots, reaction shots, or automatic camera moves; no BGM, denoising, normalization, or intros/outros — nothing that would alter or shift the master.
+- **Prerequisites**: a host that ships `modules/digitalhuman.py`, `modules/dialogue_video.py`, `modules/transcription.py` (with faster-whisper), and `code/check_digitalhuman.py`; `ffmpeg / ffprobe` available locally; a digital-human provider configured and tested in Generation Model Settings (RunningHub additionally needs the `.cn/.ai` site selection and a registered, already-working workflow). Installing on an older host will not raise an error — **trust the verdict of the first node, `dh0-ingest`**.
 
 ### Installation
 
@@ -272,4 +303,15 @@ Start the audio-drama workflow: turn episode 1's script into a podcast episode.
 Keep the existing character-voice bindings from casting.json.
 Run ad0 audio adaptation first, and give me the audio script and cue sheet
 for the ADH1 sign-off.
+```
+
+**digital-human:**
+
+```text
+Start the digital-human dialogue workflow: master refs/audio/podcast.mp3.
+The first distinct speaker to appear is the host, using refs/avatars/host.png;
+the second distinct speaker is the guest, using refs/avatars/guest.png.
+Show only the active speaker on screen at any time, use the digital-human
+provider selected in the generation model settings, and keep the original
+master audio untouched.
 ```
