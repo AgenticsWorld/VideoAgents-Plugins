@@ -1,0 +1,43 @@
+{
+  "name": "mashup",
+  "version": "4.2.1",
+  "description": "混剪配画团队:用户给讲述音频(MP3)、文稿与素材库名,不生成视频,从本地素材库的现成分镜切片配画——母带即成片声轨(零重编码),切片零公差,漂移恒 0。v4 声画词级对齐(解说体):faster-whisper 逐词时间戳实测拍边界(code/mashup_align.py 一条命令产 beat_track + word_track 两件套,替代字数估时+盲吸),shot-designer 切镜吸词(cut_word 词锚,literal 镜长=所指实体语音区间)、cutter 入点公式化对齐语音时刻、节奏三项机检硬卡(render/literal 镜长差异化、禁 3-5s 均拍、渲染快切占比);有限转场(仅相邻组同 clip 复用与连续静帧组之间 0.3s 叠化,merge 单限定写权,render_transitions pad 补偿总时长不变)。v3 素材库唯一通道保留(不联网):工单指定素材库(可多库),总制片落 mashup/footage_source.json;scout catalog 语义选候选(候选须核时长适配),curator 看库内联系图核验(sheet 角标带绝对秒)、still 兜底降为最后手段,cutter 从库源片直切。拍=语义句,镜=拍内细分,1 镜=1 组,分镜预览页零改动呈现。v4.1 流程瘦身:只保留 p0 剧情理解 + p1 story_graph(节奏映射输入),p2 世界圣经九工位整段跳过、主题基调由分镜设计师从文稿自提炼,每项目省 10+ 单——核心链路收敛为对齐→分镜→选片→切片→成片。v4.2 匹配质量三修(leijun2 摸底):具名实体直给铁律(严禁以克制/去品牌替换 literal 所指)、复用反转为兜底+候选下限提 5+library_coverage 机检(本地库零成本,多样性优先)、分段式转场渲染(硬切组零再编码,清晰度保一代直出)。自备素材权属由用户 MH1 签字自证,来源台账强制登记;mx1 批扇出 + merge 收口盖章;v4.2.1:curator 转无状态可并发(分片写+ledger 锁本就并发安全,25 批选片 5 路并行提速),明文商标 logo 为正资产与台标水印无关",
+  "categories": {
+    "16-mashup": "混剪配画"
+  },
+  "agents": [
+    {
+      "id": "16-mashup/audio-ingest"
+    },
+    {
+      "id": "16-mashup/transcript-aligner"
+    },
+    {
+      "id": "16-mashup/shot-designer"
+    },
+    {
+      "id": "16-mashup/footage-scout",
+      "stateless": true
+    },
+    {
+      "id": "16-mashup/footage-curator",
+      "stateless": true
+    },
+    {
+      "id": "16-mashup/clip-cutter",
+      "stateless": true
+    },
+    {
+      "id": "11-qa/mashup-qa",
+      "stateless": true
+    }
+  ],
+  "workflows": [
+    "workflows/mashup.yaml"
+  ],
+  "outputs_ns": "mashup",
+  "requires": {
+    "artifacts": [],
+    "plugins": []
+  }
+}

@@ -15,7 +15,7 @@ VideoAgents 官方插件仓库。VideoAgents 内置 83 个 Agent 覆盖「小说
 | **derivative-fiction** 衍生创作 | 基于项目既有的世界圣经、角色、场景资产，创作衍生小说（前传/番外/支线/if 线） | [derivative-fiction.zip](plugins/derivative-fiction.zip) |
 | **fusion-fiction** 双书融合 | 把两本书融合成一部新剧本：甲本出故事与人物灵魂，乙本覆盖世界观与人物形象壳 | [fusion-fiction.zip](plugins/fusion-fiction.zip) |
 | **audio-to-video** 音频配画 | 给一段讲述音频（MP3 + 文本）配上精确贴合的视频画面，声轨就是用户原始母带 | [audio-to-video.zip](plugins/audio-to-video.zip) |
-| **mashup** 混剪配画 | 给讲述音频配**现成素材**画面：不生成一帧视频，检索 YouTube/CC0 素材站下载切片混剪，零公差零漂移 | [mashup.zip](plugins/mashup.zip) |
+| **mashup** 混剪配画 | 给讲述音频配**本地素材库**画面：不生成一帧视频、不联网找素材，ASR 词级声画对齐、切换卡旁白节奏,零公差零漂移 | [mashup.zip](plugins/mashup.zip) |
 | **audio-drama** 有声剧/播客 | 把既有世界观、分集剧本与声音资产做成可发布的有声剧/播客：剧本有声化 → 声音导演 → 配音/音效/音乐 → 混音母带 → 发布包装，**最终产品是音频母带** | [audio-drama.zip](plugins/audio-drama.zip) |
 | **digital-human** 数字人对话 | 输入音频母带、可选文稿与人物图片，生成画面按说话人切换、每镜只显示当前说话人的数字人对话成片；声轨就是用户原始母带，渠道回传音轨一律丢弃 | [digital-human.zip](plugins/digital-human.zip) |
 
@@ -47,13 +47,15 @@ VideoAgents 官方插件仓库。VideoAgents 内置 83 个 Agent 覆盖「小说
 
 #### mashup — 混剪配画
 
-audio-to-video 的近亲，但**不生成一帧视频**：用户同样提供 MP3 讲述音频与文稿，画面改为检索 YouTube（主通道）与 Pexels/Pixabay（CC0 兜底）的**现成素材**，下载切片、拼接封装——生成成本变为检索与带宽成本。母带纪律与 audio-to-video 相同：声轨就是用户原始 MP3（`-c:a copy` 零重编码），ffprobe 实测为唯一时长事实源，累计漂移恒 0；且现成素材想切多准切多准，**交付零公差**。
+audio-to-video 的近亲，但**不生成一帧视频**：用户提供 MP3 讲述音频、文稿与**素材库**（宿主素材库页导入：自动切分镜 + 字幕 + AI 画面解读），画面全部出自本地素材库——**v3 起不联网找素材**（网络检索代码已整体移除）。母带纪律与 audio-to-video 相同：声轨就是用户原始 MP3（`-c:a copy` 零重编码），ffprobe 实测为唯一时长事实源，累计漂移恒 0；现成素材想切多准切多准，**交付零公差**。
 
-- **拍/镜两层节奏（v2 方法论）**：拍 = 语义句（transcript-aligner 按句切、吸附停顿，时长事实）；镜由 shot-designer 逐拍找**信息焦点**、定对应模式——**literal（一致，画面直给，可长镜）** 或 **render（相辅相成，群像多镜快切渲染，0.8–2.5s/镜）**——后在拍内细分，镜长无上限、硬下限 0.5s，节奏感来源于此。保留主流程 p0–p2 世界观作画面/检索参考，**检索语言按文化圈定**（中文语境搜中文、日本文化搜日文、CC0 素材站恒英文）。
-- **团队**：新增 6 个 Agent（音频摄入、拍轨对齐、分镜设计、素材侦察、选片核验（须视觉引擎）、下载切片）+ 1 个混剪 QA；复用内置剪辑/字幕/封面与各 QA 工位。分镜写标准 `shot_list.json`，**分镜预览页零改动呈现**，组注释即可调整检索意图。
-- **成本阶梯**：元数据检索（零流量）→ 360p 预览抽帧（几 MB）→ 确认后才 1080p 区间下载（几十 MB）；同源视频整簇复用。**水印一票否决**（摸底约 1/3 候选因此被毙）。
-- **版权口径**：不过滤 license，责任由用户 **MH1 签字自担**；流程强制登记来源台账 `sources.json`，unknown license 清单在 MH3 终签时呈给用户。
-- **前置要求**：宿主自带 `modules/footage.py` + `code/check_footage.py`（v2 拍/镜口径）；本机 `yt-dlp`（2025.11+ 另需 node）与 `ffmpeg/ffprobe` 可用；选片工位须派给带视觉能力的引擎。装完先跑 `python3 modules/footage.py doctor`。同样**以第一个节点 `mx0-ingest` 的自检结论为准**。
+- **声画词级对齐（v4 解说体）**：faster-whisper 逐词时间戳实测拍边界（一条命令产 beat_track + word_track 两件套），镜头切换卡在词被念出的时刻（`cut_word` 词锚机检 ±0.3s），素材动作按入点公式对齐语音时刻；节奏三项机检硬卡（render/literal 镜长差异化、禁 3–5s 均拍、渲染快切占比）。
+- **拍/镜两层节奏（v2 方法论）**：拍 = 语义句；镜由 shot-designer 逐拍找**信息焦点**、定 **literal（直给）/render（人的状态渲染快切）** 后在拍内细分。**具名实体直给铁律（v4.2）**：说特斯拉给特斯拉、说苹果给苹果，商标 logo 是首选画面，严禁以美学理由替换所指。
+- **素材匹配（v4.2 多样性优先）**：scout 通读 catalog 语义选候选（每组 ≥5 条）,curator 看库内联系图核验(角标带源片绝对秒);**复用降为兜底**(本地库零成本,有未用合格候选时禁止复用,library_coverage 机检),静帧 Ken Burns 仅真无素材时使用;curator 无状态可并发,选片多批并行。
+- **清晰度（v4.2 分段式转场渲染）**：硬切组直接引用原切片**零再编码**,只重编码叠化涉及的小段(实测 60/70 组一代直出);有限转场——仅相邻组同 clip 复用与连续静帧组之间 0.3s 叠化。
+- **流程瘦身（v4.1）**：只保留 p0 剧情理解 + p1 story_graph（节奏映射输入），p2 世界圣经九工位整段跳过，主题基调由分镜设计师从文稿自提炼。
+- **权属口径**：素材库为用户自备素材（license 恒 user-provided），权属由用户 **MH1 签字自证**；台账 `sources.json` 强制登记，MH3 终签时呈报。
+- **前置要求**：宿主自带 `modules/footage.py`（catalog/still/`--provider library`）、`code/mashup_align.py`、`code/render_transitions.py`、`code/check_footage.py`（21 项）；python 包 `faster-whisper`（词级对齐核心，缺失自动降级并呈报）；`ffmpeg/ffprobe`;选片工位须派给带视觉能力的引擎。装完先跑 `python3 modules/footage.py doctor`。同样**以第一个节点 `mx0-ingest` 的自检结论为准**。
 
 #### audio-drama — 有声剧 / 播客制作
 
@@ -133,8 +135,9 @@ curl -X POST --data-binary @audio-to-video.zip http://127.0.0.1:8630/api/v1/plug
 **mashup 混剪配画：**
 
 ```text
-启动 mashup 混剪流程：音频 refs/audio/qingxing.mp3，文稿 refs/qingxing.txt。
-先跑 p0–p2 出世界观参考，并行 mx0 摄入对齐，
+启动 mashup 混剪流程：音频 refs/audio/qingxing.mp3，文稿 refs/qingxing.txt，
+使用素材库 <库名> 配画面（可多个）。
+先跑 p0–p1 出剧情参考，并行 mx0 摄入对齐（ASR 词级实测拍边界），
 再逐拍分镜设计，出时间轴与节奏基线给我签 MH1。
 ```
 
@@ -168,7 +171,7 @@ The official plugin repository for VideoAgents. VideoAgents ships with 83 built-
 | **derivative-fiction** | Write derivative novels (prequels/side stories/what-if lines) on top of the project's existing world bible, characters, and scene assets | [derivative-fiction.zip](plugins/derivative-fiction.zip) |
 | **fusion-fiction** | Fuse two books into one new screenplay: Book A supplies the story and character souls, Book B supplies the worldview and character appearance shells | [fusion-fiction.zip](plugins/fusion-fiction.zip) |
 | **audio-to-video** | Generate a video whose visuals precisely follow a narrated audio track (MP3 + transcript) — the soundtrack is the user's original master, untouched | [audio-to-video.zip](plugins/audio-to-video.zip) |
-| **mashup** | Pair a narrated audio track with **found footage**: no video generation at all — search YouTube/CC0 stock sites, download and cut existing clips, zero tolerance and zero drift | [mashup.zip](plugins/mashup.zip) |
+| **mashup** | Pair a narrated audio track with clips from a **local footage library**: no video generation, no internet search — ASR word-level audio-visual alignment with cuts snapped to the narration, zero tolerance and zero drift | [mashup.zip](plugins/mashup.zip) |
 | **audio-drama** | Turn the project's existing worldview, episode scripts, and voice assets into a publishable audio drama / podcast: script adaptation → voice direction → voices/SFX/music → mixed master → release packaging. **The final product is an audio master** | [audio-drama.zip](plugins/audio-drama.zip) |
 | **digital-human** | Turn an audio master, an optional transcript, and one or more character images into a talking-avatar dialogue video — the picture cuts follow the speakers, only the active speaker is ever on screen, and the soundtrack is the user's original master (provider audio is discarded) | [digital-human.zip](plugins/digital-human.zip) |
 
@@ -200,13 +203,15 @@ You provide an MP3 (e.g. someone narrating a history story) and its transcript; 
 
 #### mashup — Found-Footage Mashup
 
-A close cousin of audio-to-video, except **not a single frame is generated**: you provide the same MP3 narration and transcript, but the visuals come from searching **existing footage** on YouTube (primary channel) and Pexels/Pixabay (CC0 fallback), then downloading, cutting, and assembling the clips — generation cost becomes search and bandwidth cost. The master-track discipline is identical: the soundtrack is your original MP3 (`-c:a copy`, zero re-encoding), ffprobe measurements are the only source of duration truth, and cumulative drift is always 0. Since found footage can be cut to any precision, delivery is **zero-tolerance**.
+A close cousin of audio-to-video, except **not a single frame is generated**: you provide an MP3 narration, a transcript, and a **footage library** (imported on the host's footage page: automatic shot splitting + subtitles + AI visual notes). All visuals come from the local library — **since v3 there is no internet search at all** (the network-search code has been removed entirely). The master-track discipline is identical: the soundtrack is your original MP3 (`-c:a copy`, zero re-encoding), ffprobe measurements are the only source of duration truth, and cumulative drift is always 0. Delivery is **zero-tolerance**.
 
-- **Beat/shot two-layer rhythm (v2 methodology)**: a beat = one semantic sentence (cut by the transcript-aligner, snapped to pauses — the duration ground truth); shots are designed per beat by the shot-designer, which finds the **information focus**, picks a mapping mode — **literal** (text and picture say the same thing; one shot, can run long) or **render** (picture conveys complementary information via human states; 2–6 rapid-cut shots at 0.8–2.5s each) — then subdivides within the beat. Shots have no upper length limit and a hard 0.5s floor; this is where the rhythm comes from. The main pipeline's p0–p2 worldview runs as reference data, and **search language follows the cultural context** (Chinese topics searched in Chinese, Japanese culture in Japanese, CC0 stock sites always in English).
-- **Team**: 6 new agents (audio ingest, transcript aligner, shot designer, footage scout, footage curator — requires a vision-capable engine — and clip cutter) plus one mashup QA; built-in editing/subtitle/thumbnail and QA agents are reused. Storyboards are written as standard `shot_list.json`, so the **existing storyboard preview page works with zero changes** — edit group annotations to adjust search intent.
-- **Cost ladder**: metadata search (zero traffic) → 360p previews with frame grids (a few MB) → 1080p range downloads only after confirmation (tens of MB); one source video serves a whole cluster. **Watermarks are an instant veto** (~1/3 of candidates were killed for this in field testing).
-- **Copyright stance**: licenses are not filtered — responsibility rests with the user via the **MH1 sign-off**; the pipeline enforces honest bookkeeping in a `sources.json` ledger, and the unknown-license list is presented at the final MH3 sign-off.
-- **Prerequisites**: a host that ships `modules/footage.py` + `code/check_footage.py` (v2 beat/shot semantics); `yt-dlp` (2025.11+ also needs node) and `ffmpeg/ffprobe` available locally; the curator must run on a vision-capable engine. Run `python3 modules/footage.py doctor` after installing. As with audio-to-video, **trust the verdict of the first node, `mx0-ingest`**.
+- **Word-level audio-visual alignment (v4, commentary style)**: beat boundaries are measured with faster-whisper word timestamps (one command produces both beat_track and word_track); shot cuts snap to the moment a word is spoken (`cut_word` anchors, machine-checked at ±0.3s), and footage action is aligned to speech via an in-point formula. Three rhythm machine-checks are enforced (render/literal length differentiation, no 3–5s uniform shots, rapid-cut share).
+- **Beat/shot rhythm (v2 methodology)**: a beat = one semantic sentence; shots are designed per beat via **information focus** and a **literal / render** mapping. **Named-entity iron rule (v4.2)**: say Tesla, show Tesla; say Apple, show Apple — brand logos are the preferred visual, and replacing the literal referent for aesthetic reasons is forbidden.
+- **Matching (v4.2, diversity first)**: the scout reads the whole catalog and picks ≥5 candidates per group; the curator verifies against library contact sheets (grid labels carry absolute source seconds). **Reuse is demoted to a last resort** (local clips cost nothing — reusing while unused candidates exist fails the library_coverage check); Ken Burns stills only when no footage truly exists; the curator is stateless and batches run in parallel.
+- **Sharpness (v4.2 segmented transition rendering)**: hard-cut groups reference the original clips with **zero re-encoding**; only the few groups touched by dissolves are re-encoded (60/70 groups first-generation in field testing). Limited transitions: 0.3s dissolves only between adjacent groups sharing a clip or consecutive stills.
+- **Lean pipeline (v4.1)**: only p0 story parsing + p1 story_graph (the rhythm-mapping input) are kept; the nine p2 worldbuilding stations are skipped entirely, with the theme tone distilled from the transcript by the shot designer.
+- **Rights stance**: library footage is user-provided (license is always `user-provided`); rights rest with the user via the **MH1 sign-off**; the `sources.json` ledger is enforced and presented at MH3.
+- **Prerequisites**: a host that ships `modules/footage.py` (catalog/still/`--provider library`), `code/mashup_align.py`, `code/render_transitions.py`, and `code/check_footage.py` (21 checks); the Python package `faster-whisper` (core of word-level alignment; degrades gracefully with a warning if missing); `ffmpeg/ffprobe`; the curator must run on a vision-capable engine. Run `python3 modules/footage.py doctor` after installing. As with audio-to-video, **trust the verdict of the first node, `mx0-ingest`**.
 
 #### audio-drama — Audio Drama / Podcast Production
 
@@ -291,8 +296,9 @@ and alignment first, and give me the timeline baseline for the AVH1 sign-off.
 
 ```text
 Start the mashup workflow: audio refs/audio/qingxing.mp3, transcript
-refs/qingxing.txt. Run p0–p2 first for the worldview reference, with mx0 ingest
-and alignment in parallel, then design the storyboard beat by beat and give me
+refs/qingxing.txt, using footage library <name> (one or more) for the visuals.
+Run p0–p1 first for the story reference, with mx0 ingest and ASR word-level
+alignment in parallel, then design the storyboard beat by beat and give me
 the timeline and rhythm baseline for the MH1 sign-off.
 ```
 
