@@ -47,15 +47,15 @@ VideoAgents 官方插件仓库。VideoAgents 内置 83 个 Agent 覆盖「小说
 
 #### mashup — 混剪配画
 
-audio-to-video 的近亲，但**不生成一帧视频**：用户提供 MP3 讲述音频、文稿与**素材库**（宿主素材库页导入：自动切分镜 + 字幕 + AI 画面解读），画面全部出自本地素材库——**v3 起不联网找素材**（网络检索代码已整体移除）。母带纪律与 audio-to-video 相同：声轨就是用户原始 MP3（`-c:a copy` 零重编码），ffprobe 实测为唯一时长事实源，累计漂移恒 0；现成素材想切多准切多准，**交付零公差**。
+给讲述音频配画面,**不生成一帧视频**:提供文稿与素材库(讲述音频可选,不给就按文稿 TTS 合成旁白),画面全部出自**本地素材库**,不联网找素材。声轨就是母带原样(零重编码),成片与母带零漂移、切片零公差。
 
-- **声画词级对齐（v4 解说体）**：faster-whisper 逐词时间戳实测拍边界（一条命令产 beat_track + word_track 两件套），镜头切换卡在词被念出的时刻（`cut_word` 词锚机检 ±0.3s），素材动作按入点公式对齐语音时刻；节奏三项机检硬卡（render/literal 镜长差异化、禁 3–5s 均拍、渲染快切占比）。
-- **拍/镜两层节奏（v2 方法论）**：拍 = 语义句；镜由 shot-designer 逐拍找**信息焦点**、定 **literal（直给）/render（人的状态渲染快切）** 后在拍内细分。**具名实体直给铁律（v4.2）**：说特斯拉给特斯拉、说苹果给苹果，商标 logo 是首选画面，严禁以美学理由替换所指。
-- **素材匹配（v4.2 多样性优先）**：scout 通读 catalog 语义选候选（每组 ≥5 条）,curator 看库内联系图核验(角标带源片绝对秒);**复用降为兜底**(本地库零成本,有未用合格候选时禁止复用,library_coverage 机检),静帧 Ken Burns 仅真无素材时使用;curator 无状态可并发,选片多批并行。
-- **清晰度（v4.2 分段式转场渲染）**：硬切组直接引用原切片**零再编码**,只重编码叠化涉及的小段(实测 60/70 组一代直出);有限转场——仅相邻组同 clip 复用与连续静帧组之间 0.3s 叠化。
-- **流程瘦身（v4.1）**：只保留 p0 剧情理解 + p1 story_graph（节奏映射输入），p2 世界圣经九工位整段跳过，主题基调由分镜设计师从文稿自提炼。
-- **权属口径**：素材库为用户自备素材（license 恒 user-provided），权属由用户 **MH1 签字自证**；台账 `sources.json` 强制登记，MH3 终签时呈报。
-- **前置要求**：宿主自带 `modules/footage.py`（catalog/still/`--provider library`）、`code/mashup_align.py`、`code/render_transitions.py`、`code/check_footage.py`（21 项）；python 包 `faster-whisper`（词级对齐核心，缺失自动降级并呈报）；`ffmpeg/ffprobe`;选片工位须派给带视觉能力的引擎。装完先跑 `python3 modules/footage.py doctor`。同样**以第一个节点 `mx0-ingest` 的自检结论为准**。
+- **声画对齐**:faster-whisper 逐词时间戳实测拍边界,**镜头切换卡在词被念出的时刻**,素材动作按公式对齐语音时刻;节奏机检硬卡(禁全片均拍、渲染段必须快切)。
+- **素材匹配**:分镜设计前先通读素材库;**说什么给什么**——具名实体(品牌/人物/产品/金额)直给对应画面,商标 logo 是首选;每组 ≥5 候选、多样性优先(还有没用过的合格素材时禁止复用),静帧兜底仅在真无素材时使用。
+- **画质**:切片直取库内原片一次转码;成片硬切段**零再编码**,仅少量叠化窗口重编码。
+- **转场**:默认硬切保节奏;仅相邻组复用同素材、或连续静帧之间自动加 0.3s 叠化(成片总时长严格不变)。
+- **人签三点**:MH1 时间轴与分镜 → MH2 选片 → MH3 成片;分镜预览页看选片帧,📝 组注释即可调整检索意图。
+- **权属**:素材库为用户自备素材,权属随 MH1 签字自证;来源台账强制登记,MH3 终签呈报。
+- **前置**:素材库已导入且 AI 画面分析跑完(建议覆盖率 100%);本机 `ffmpeg/ffprobe`;python 包 `faster-whisper`(缺失自动降级并呈报);选片工位须派给带视觉能力的引擎;TTS 合成旁白需先在「生成模型」页配置 TTS 渠道与音色。装完先跑 `python3 modules/footage.py doctor`,以第一个节点 `mx0-ingest` 的自检结论为准。
 
 #### audio-drama — 有声剧 / 播客制作
 
@@ -136,9 +136,15 @@ curl -X POST --data-binary @audio-to-video.zip http://127.0.0.1:8630/api/v1/plug
 
 ```text
 启动 mashup 混剪流程：音频 refs/audio/qingxing.mp3，文稿 refs/qingxing.txt，
-使用素材库 <库名> 配画面（可多个）。
-先跑 p0–p1 出剧情参考，并行 mx0 摄入对齐（ASR 词级实测拍边界），
-再逐拍分镜设计，出时间轴与节奏基线给我签 MH1。
+使用素材库 <库名>（支持多个）配画面。
+出时间轴与节奏基线给我签 MH1。
+```
+
+无音频版（按文稿 TTS 合成旁白，建议提前在「生成模型」页配置好要使用的音色）：
+
+```text
+启动 mashup 混剪流程：文稿 refs/xxx.txt，按文稿 TTS 合成旁白，
+使用素材库 <库名>（支持多个）配画面。
 ```
 
 **audio-drama 有声剧/播客：**
@@ -203,15 +209,15 @@ You provide an MP3 (e.g. someone narrating a history story) and its transcript; 
 
 #### mashup — Found-Footage Mashup
 
-A close cousin of audio-to-video, except **not a single frame is generated**: you provide an MP3 narration, a transcript, and a **footage library** (imported on the host's footage page: automatic shot splitting + subtitles + AI visual notes). All visuals come from the local library — **since v3 there is no internet search at all** (the network-search code has been removed entirely). The master-track discipline is identical: the soundtrack is your original MP3 (`-c:a copy`, zero re-encoding), ffprobe measurements are the only source of duration truth, and cumulative drift is always 0. Delivery is **zero-tolerance**.
+Pairs a narration with visuals — **not a single frame is generated**: you provide a transcript and a footage library (the narration audio is optional; without it, narration is TTS-synthesized from the transcript). All visuals come from the **local footage library**; there is no internet search. The soundtrack is the master track untouched (zero re-encoding), with zero drift and zero-tolerance cuts.
 
-- **Word-level audio-visual alignment (v4, commentary style)**: beat boundaries are measured with faster-whisper word timestamps (one command produces both beat_track and word_track); shot cuts snap to the moment a word is spoken (`cut_word` anchors, machine-checked at ±0.3s), and footage action is aligned to speech via an in-point formula. Three rhythm machine-checks are enforced (render/literal length differentiation, no 3–5s uniform shots, rapid-cut share).
-- **Beat/shot rhythm (v2 methodology)**: a beat = one semantic sentence; shots are designed per beat via **information focus** and a **literal / render** mapping. **Named-entity iron rule (v4.2)**: say Tesla, show Tesla; say Apple, show Apple — brand logos are the preferred visual, and replacing the literal referent for aesthetic reasons is forbidden.
-- **Matching (v4.2, diversity first)**: the scout reads the whole catalog and picks ≥5 candidates per group; the curator verifies against library contact sheets (grid labels carry absolute source seconds). **Reuse is demoted to a last resort** (local clips cost nothing — reusing while unused candidates exist fails the library_coverage check); Ken Burns stills only when no footage truly exists; the curator is stateless and batches run in parallel.
-- **Sharpness (v4.2 segmented transition rendering)**: hard-cut groups reference the original clips with **zero re-encoding**; only the few groups touched by dissolves are re-encoded (60/70 groups first-generation in field testing). Limited transitions: 0.3s dissolves only between adjacent groups sharing a clip or consecutive stills.
-- **Lean pipeline (v4.1)**: only p0 story parsing + p1 story_graph (the rhythm-mapping input) are kept; the nine p2 worldbuilding stations are skipped entirely, with the theme tone distilled from the transcript by the shot designer.
-- **Rights stance**: library footage is user-provided (license is always `user-provided`); rights rest with the user via the **MH1 sign-off**; the `sources.json` ledger is enforced and presented at MH3.
-- **Prerequisites**: a host that ships `modules/footage.py` (catalog/still/`--provider library`), `code/mashup_align.py`, `code/render_transitions.py`, and `code/check_footage.py` (21 checks); the Python package `faster-whisper` (core of word-level alignment; degrades gracefully with a warning if missing); `ffmpeg/ffprobe`; the curator must run on a vision-capable engine. Run `python3 modules/footage.py doctor` after installing. As with audio-to-video, **trust the verdict of the first node, `mx0-ingest`**.
+- **Audio-visual alignment**: beat boundaries are measured with faster-whisper word timestamps; **cuts snap to the moment a word is spoken**, and footage action is aligned to speech by formula. Rhythm machine-checks are enforced (no uniform shot lengths; rendered passages must cut fast).
+- **Matching**: the shot designer reads the whole library before designing; **say it, show it** — named entities (brands, people, products, amounts) get their literal visual, with brand logos as the preferred shot; ≥5 candidates per group, diversity first (reuse is forbidden while unused qualified clips remain), Ken Burns stills only when no footage truly exists.
+- **Quality**: clips are cut straight from the library source in a single transcode; hard-cut segments of the final film are **not re-encoded at all** — only the few dissolve windows are.
+- **Transitions**: hard cuts by default to protect rhythm; 0.3s dissolves are added automatically only between adjacent groups sharing a clip or consecutive stills (total duration strictly unchanged).
+- **Three sign-offs**: MH1 timeline & storyboard → MH2 clip selection → MH3 final film; review keyframes on the storyboard preview page and adjust search intent via group annotations.
+- **Rights**: library footage is user-provided; rights are self-certified at MH1; the source ledger is enforced and presented at MH3.
+- **Prerequisites**: a footage library imported with AI visual analysis complete (100% coverage recommended); `ffmpeg/ffprobe`; the Python package `faster-whisper` (degrades gracefully if missing); the curator must run on a vision-capable engine; TTS narration requires a TTS channel and voice configured on the model-settings page. Run `python3 modules/footage.py doctor` after installing, and trust the verdict of the first node, `mx0-ingest`.
 
 #### audio-drama — Audio Drama / Podcast Production
 
@@ -297,9 +303,16 @@ and alignment first, and give me the timeline baseline for the AVH1 sign-off.
 ```text
 Start the mashup workflow: audio refs/audio/qingxing.mp3, transcript
 refs/qingxing.txt, using footage library <name> (one or more) for the visuals.
-Run p0–p1 first for the story reference, with mx0 ingest and ASR word-level
-alignment in parallel, then design the storyboard beat by beat and give me
-the timeline and rhythm baseline for the MH1 sign-off.
+Give me the timeline and rhythm baseline for the MH1 sign-off.
+```
+
+Without audio (narration is TTS-synthesized from the transcript; configure the
+voice on the model-settings page beforehand):
+
+```text
+Start the mashup workflow: transcript refs/xxx.txt, synthesize the narration
+from the transcript via TTS, using footage library <name> (one or more) for
+the visuals.
 ```
 
 **audio-drama:**
