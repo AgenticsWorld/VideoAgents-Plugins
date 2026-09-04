@@ -95,10 +95,18 @@
 # 成本阶梯(v3 全程零流量):catalog/search 元数据 → 库内 sheet/thumbnail 现成 jpg
 #   逐图目视 → cut 直切库内源片(本地转码)。无 preview 下载、无 fetch 拉流。
 #
-# 前置:无需主流程其余阶段(本插件自起项目)。用户输入三件:
-#   refs/audio/<name>.mp3(讲述音频)+ 对应文稿(refs/ 下或工单内)
-#   + 工单指明使用的素材库(data/footage/<name>,一个或多个,建议 info 覆盖率 100%)。
-# v1 限定:一个 MP3 = 一个项目 = ep01;无 BGM/音效叠加(会破坏零重编码)、无片头片尾。
+# 前置:无需主流程其余阶段(本插件自起项目)。用户输入:
+#   文稿(refs/ 下或工单内)+ 工单指明素材库(data/footage/<name>,可多个,
+#   建议 info 覆盖率 100%)+ 讲述音频(refs/ 下,**可选**)。
+# ★音频可选(v4.3 正式化,leijun 项目先例):用户只给文稿时,总制片在派 mx0-ingest
+#   **之前**先加派一张 09-audio/narrator 单——按文稿分段合成旁白(统一走宿主
+#   genmedia tts,声线可在点单工单指定语气/声线描述)落 assets/audio/narration/{ep}/,
+#   逐字对应文稿(text_lossless_verbatim),流拷贝 concat 为 assets/audio/master/{ep}.mp3,
+#   audio_map 登记 master_origin=tts_synthesized 与 tts_synthesis 元数据;此后母带纪律
+#   与用户上传完全一致(母带即声轨,零重编码,任何环节不得重制)。TTS 前置需宿主
+#   「生成模型」页已配置 TTS 渠道,未配置时停工向用户要音频或要配置,不得带病开工。
+#   母带来源(用户上传/TTS 合成+声线)随 MH1 第 1 签字项呈报。
+# v1 限定:一个母带 = 一个项目 = ep01;无 BGM/音效叠加(会破坏零重编码)、无片头片尾。
 #
 # ★宿主前置(装包前必读):本插件为纯声明式包(§10.4),工具链不在包内,随宿主发布——
 #   modules/footage.py       素材库检索/切片原语(doctor 子命令自检)
@@ -144,7 +152,9 @@ main_dag_on_start:
     - p5-*             # 剧本改编——由 mx0-design 画面设计替代
     - p6-*             # 导演分镜——由 mx0-align + mx0-design 替代
     - p7-*             # 视觉生成——由 mx1 检索选片 + mx2 下载切片替代
-    - p8-*             # ★音频——母带即成片声轨,绝不跑 TTS 与混音
+    - p8-*             # ★主流程音频阶段——母带即成片声轨,绝不重制/混音
+                       #  (与 v4.3「无音频时 TTS 前置合成母带」不冲突:那发生在
+                       #   mx0-ingest 之前、产出的就是母带本身,而非对母带再加工)
     - p9-*             # 剪辑合成——由 mx3-edit 完成
     - p10-*            # 成片终审——由 mx4-* 完成
     - p11-*            # 视频发布——按需另点单

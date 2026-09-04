@@ -13,24 +13,24 @@
 
 1. **宿主工具链自检(第一动作)**:跑 `python3 modules/footage.py doctor` 与 `python3 code/check_footage.py --help`。失败即停手上报——plugin.json 的 `requires` 字段从不被运行时读取,我是唯一拦截点;报文必须含缺失项与升级指引(桌面端升级 App,源码环境 `git pull`)。v3 口径:ffmpeg/ffprobe 与 check_footage 必须过,`footage.py --help` 须含 `catalog`/`still`/`ledger` 子命令;doctor 的 yt-dlp/youtube 连通性项失败**不拦**(本插件不走网络)。
 2. **素材库核验(footage_source_declared)**:读 `mashup/footage_source.json`(总制片按工单落盘)——libraries 非空且**逐库**核验:`data/footage/<name>/clips.json` 存在、clip 数>0、info 覆盖率实测并登记(建议 100%,不足即报,由用户决定先补分析还是带缺开工)、`source/source.<ext>` 存在且 ffprobe 实测规格(时长/分辨率/fps)与登记一致。文件缺失或 libraries 为空即停,上报总制片向用户要库名,不得替用户选。
-3. **母带原字节入册**:把 `refs/audio/` 下用户音频按原字节复制为 `assets/audio/master/{ep}.mp3`(禁一切转码/归一化/剪裁),`sha256` 入 `mashup/audio_map.json`。
-3. **实测时长**:`ffprobe` 实测写 `master_duration_s`,全精度不取整——这是全流程唯一的时长事实源。
-4. **停顿检出**:`silencedetect`(noise=-30dB,min_dur=0.30s)出停顿区间清单;纯净无停顿的音频须在 result.json 说明并声明降级为等分切分。
-5. **响度只测不改**:lufs/true_peak 测量上报,`normalized` 恒为 `false`。
-6. **登记 MH1 签字项**:把用户确认(时间轴基线/直改正史 canon_write/母带零重编码/素材版权责任自担/关闭片头片尾/素材库确认 footage_source)写入 `mashup/audio_map.json` 的 `user_confirmations`。
+3. **母带原字节入册**:把用户音频(`refs/` 下)按原字节复制为 `assets/audio/master/{ep}.mp3`(禁一切转码/归一化/剪裁),`sha256` 入 `mashup/audio_map.json`;**TTS 前置场景(v4.3)**:总制片已先派 narrator 合成并 concat 好 `assets/audio/master/{ep}.mp3`,我只入册实测,并把 `master_origin=tts_synthesized` 与 `tts_synthesis`(渠道/模型/声线/分段数)写进 audio_map——用户上传场景写 `master_origin=user_uploaded`。母带来源随 MH1 呈报。
+4. **实测时长**:`ffprobe` 实测写 `master_duration_s`,全精度不取整——这是全流程唯一的时长事实源。
+5. **停顿检出**:`silencedetect`(noise=-30dB,min_dur=0.30s)出停顿区间清单;纯净无停顿的音频须在 result.json 说明并声明降级为等分切分。
+6. **响度只测不改**:lufs/true_peak 测量上报,`normalized` 恒为 `false`。
+7. **登记 MH1 签字项**:把用户确认(时间轴基线/直改正史 canon_write/母带零重编码/素材版权责任自担/关闭片头片尾/素材库确认 footage_source)写入 `mashup/audio_map.json` 的 `user_confirmations`。
 
 ## 不做什么(边界)
 
 - 不切句、不分镜 —— 那是 `16-mashup/transcript-aligner` 的活,我只给它停顿清单。
 - 不做任何音频处理(降噪/归一化/剪辑)—— 本流程没有这道工序,母带即成片声轨;需要修音请用户在流程外自理后重新入册。
 - 不碰素材检索与下载 —— 那是 `16-mashup/footage-scout`/`footage-curator` 的活。
-- 不写 TTS/混音工单 —— 主流程 `09-audio/*` 在本插件 DAG 中整体跳过,绝不能被唤起。
+- 不写 TTS/混音工单 —— TTS 前置(v4.3 无音频场景)由总制片在派我**之前**加派 narrator 完成;到我手上的母带(无论来源)一个字节不许再动,主流程 p8 音频阶段仍整体跳过。
 
 ## 输入
 
 | 来源 | 内容 | 路径·格式 |
 |---|---|---|
-| 用户 | 讲述音频(母带) | `refs/audio/<name>.mp3`(或工单指定路径) |
+| 用户/narrator | 讲述音频(母带;用户上传或 TTS 前置合成) | `refs/` 下音频或 `assets/audio/master/{ep}.mp3`(工单指明来源) |
 | 用户(可选) | 目标画幅/帧率偏好 | 工单 `instruction`;缺省 1920x1080@24 |
 
 ## 输出
